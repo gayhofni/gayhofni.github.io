@@ -167,12 +167,8 @@ input.code { text-transform: uppercase; letter-spacing: 6px; font-family: var(--
     radial-gradient(circle at 50% 42%, #3b3e4c 0%, #1e1f28 58%, #0c0c11 100%);
   box-shadow: 0 1px 0 #15161c, 0 2px 0 #0f1015, 0 3px 0 #0b0b0f, 0 4px 0 #07070a, 0 5px 0 #000, inset 0 0 0 1px rgba(255,255,255,.14), inset 0 -3px 4px rgba(0,0,0,.4);
 }
-.pc.k .disc { transform: translateY(-6%); }
-.pc.w.k .disc { box-shadow: 0 1px 0 #d9c9a8, 0 2px 0 #cbb994, 0 3px 0 #bba982, 0 4px 0 #a89670, 0 5px 0 #8e7c57, 0 6px 0 #d9c9a8, 0 7px 0 #bba982, 0 8px 0 #a89670, 0 9px 0 #7d6b48, inset 0 0 0 1px rgba(255,255,255,.7), 0 0 14px rgba(255,194,61,.35); }
-.pc.b.k .disc { box-shadow: 0 1px 0 #15161c, 0 2px 0 #0f1015, 0 3px 0 #0b0b0f, 0 4px 0 #07070a, 0 5px 0 #000, 0 6px 0 #2a2c36, 0 7px 0 #15161c, 0 8px 0 #0b0b0f, 0 9px 0 #000, inset 0 0 0 1px rgba(255,255,255,.14), 0 0 14px rgba(255,194,61,.35); }
-.pc .crown { width: 56%; height: 56%; display: none; position: relative; z-index: 1; filter: drop-shadow(0 1px 0 rgba(0,0,0,.45)); }
-.pc.k .crown { display: block; animation: crownShine 3s ease-in-out infinite; }
-@keyframes crownShine { 50% { filter: drop-shadow(0 1px 0 rgba(0,0,0,.45)) drop-shadow(0 0 4px rgba(255,220,120,.9)); } }
+.pc .crown { position: absolute; left: 21%; top: 19%; width: 58%; height: 58%; display: none; z-index: 1; filter: drop-shadow(0 1px 0 rgba(0,0,0,.35)); }
+.pc.k .crown { display: block; }
 
 .pc.can .disc::after, .pc.threat .disc::after { content: ""; position: absolute; inset: -9%; border-radius: 50%; pointer-events: none; }
 .pc.can .disc::after { border: 2px solid var(--accent); box-shadow: 0 0 10px rgba(255,194,61,.6); animation: canPulse 1.6s ease-in-out infinite; }
@@ -194,7 +190,7 @@ input.code { text-transform: uppercase; letter-spacing: 6px; font-family: var(--
 .pc.gone { opacity: 0; }
 .pc.gone .disc { transform: scale(1.5) rotate(25deg); filter: brightness(2); transition: transform .25s ease-out, filter .25s; }
 .pc.crowned .disc { animation: crownPop .8s cubic-bezier(.3,1.6,.5,1); }
-@keyframes crownPop { 0% { transform: scale(1); } 30% { transform: translateY(-40%) scale(1.45) rotate(-12deg); } 60% { transform: translateY(-10%) scale(.95) rotate(6deg); } 100% { transform: translateY(-6%); } }
+@keyframes crownPop { 0% { transform: scale(1); } 30% { transform: translateY(-40%) scale(1.45) rotate(-12deg); } 60% { transform: translateY(-10%) scale(.95) rotate(6deg); } 100% { transform: none; } }
 .pc.deal .disc { animation: deal .6s cubic-bezier(.3,1.4,.5,1) backwards; }
 .pc.deal .shadow { animation: dealShadow .6s ease-out backwards; }
 @keyframes deal { 0% { transform: translateY(-160%) scale(1.5) rotate(-30deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; } }
