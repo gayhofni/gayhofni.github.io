@@ -1,4 +1,6 @@
-/* Russian draughts (shashki) rules engine. Pure functions, no DOM.
+/* Draughts rules engine: Russian draughts (shashki) with two house rules:
+   men capture forward only, and a king that captures lands right behind the captured piece.
+   Pure functions, no DOM.
    Board: array of 64. Index = r*8 + c, r=0 is the top row (black's back row).
    Values: 0 empty, 1 white man, 2 white king, -1 black man, -2 black king.
    White sits at the bottom (rows 5-7) and moves first. */
@@ -38,6 +40,7 @@
       var p = rc(pos);
       for (var d = 0; d < 4; d++) {
         var dr = DIRS[d][0], dc = DIRS[d][1];
+        if (!king && dr !== -side) continue; // house rule: men capture forward only
         var r = p[0] + dr, c = p[1] + dc;
         if (king) {
           while (onBoard(r, c) && b[idx(r, c)] === 0) { r += dr; c += dc; }
@@ -47,11 +50,8 @@
         if (sideOf(b[t]) !== -side || caps.indexOf(t) !== -1) continue;
         var lands = [];
         var lr = r + dr, lc = c + dc;
-        while (onBoard(lr, lc) && b[idx(lr, lc)] === 0) {
-          lands.push(idx(lr, lc));
-          if (!king) break;
-          lr += dr; lc += dc;
-        }
+        // house rule: every capture (king too) lands on the square right after the captured piece
+        if (onBoard(lr, lc) && b[idx(lr, lc)] === 0) lands.push(idx(lr, lc));
         if (lands.length) res.push({ cap: t, lands: lands });
       }
       return res;
