@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06121c">
+<title>באטלשיפ</title>
+<meta name="description" content="באטלשיפ תלת-ממדי אונליין לשני שחקנים, כל אחד מהטלפון שלו. בלי הרשמה.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Secular+One&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="logo"><span class="radar-dot" aria-hidden="true"></span>באטלשיפ</h1>
+    <div class="row" style="flex-wrap:nowrap">
+      <button class="icon-btn" id="soundBtn" aria-pressed="true" aria-label="צלילים">🔊</button>
+      <button class="icon-btn" id="rulesBtn" aria-label="חוקי המשחק">?</button>
+    </div>
+  </header>
+
+  <!-- HOME -->
+  <main id="home" class="wrap" style="padding:0">
+    <section class="hero">
+      <h2>תסדר את הצי. <em>תטביע את שלו.</em></h2>
+      <p>קרב ימי תלת-ממדי לשני שחקנים, כל אחד מהטלפון שלו. פותחים חדר, שולחים קישור לחבר, ומתחילים להפציץ.</p>
+    </section>
+    <div class="hero-sea" aria-hidden="true"><div class="wave"></div><div class="boat"></div><div class="wave w2"></div></div>
+    <div class="card">
+      <label class="f" for="nameIn">איך קוראים לך?
+        <input class="t" id="nameIn" maxlength="16" autocomplete="nickname" placeholder="השם שיופיע ליריב">
+      </label>
+      <button class="btn btn-primary" id="createBtn">פתיחת חדר חדש</button>
+    </div>
+    <div class="card">
+      <h3>קיבלת קוד מחבר?</h3>
+      <label class="f" for="codeIn">קוד החדר
+        <input class="t code" id="codeIn" maxlength="5" autocomplete="off" placeholder="ABCDE" aria-describedby="joinErr">
+      </label>
+      <p class="err" id="joinErr" role="alert"></p>
+      <button class="btn btn-ghost" id="joinBtn">הצטרפות למשחק</button>
+    </div>
+  </main>
+
+  <!-- GAME -->
+  <main id="game" hidden style="display:flex;flex-direction:column;gap:12px">
+    <div class="banner" id="waitBanner" hidden>
+      <div class="share">
+        <p>שלח לחבר את הקישור או את הקוד:</p>
+        <div class="bigcode" id="bigCode">-----</div>
+        <div class="row">
+          <button class="btn btn-primary" id="shareBtn">שליחת קישור</button>
+          <button class="btn btn-ghost" id="copyBtn">העתקת קישור</button>
+        </div>
+        <p class="hint">בינתיים אפשר כבר לסדר את הצי.</p>
+      </div>
+    </div>
+
+    <div class="players">
+      <div class="pl" id="plMe"><span class="flag" aria-hidden="true">⚓</span><div class="who"><span class="nm"></span><span class="sub"><span class="online"></span><span class="st"></span></span></div></div>
+      <span class="vs" aria-hidden="true">נגד</span>
+      <div class="pl" id="plOpp"><span class="flag" aria-hidden="true">🏴‍☠️</span><div class="who"><span class="nm"></span><span class="sub"><span class="online"></span><span class="st"></span></span></div></div>
+    </div>
+
+    <div class="status" id="status" aria-live="polite"></div>
+
+    <div class="tabs" role="tablist" aria-label="איזה לוח להציג">
+      <button role="tab" id="tabEnemy" aria-selected="false" aria-controls="stage">הים של היריב</button>
+      <button role="tab" id="tabMine" aria-selected="true" aria-controls="stage">הצי שלי</button>
+    </div>
+
+    <div class="stage" id="stage" role="tabpanel">
+      <div class="scene">
+        <div class="board3d" id="board3d">
+          <div class="rim" aria-hidden="true"></div>
+          <div class="water" aria-hidden="true"></div>
+          <div class="coords x" id="coordX" aria-hidden="true"></div>
+          <div class="coords y" id="coordY" aria-hidden="true"></div>
+          <div class="grid" id="grid" role="grid" aria-label="לוח"></div>
+          <div class="radar" aria-hidden="true"></div>
+          <div class="ships" id="ships" aria-hidden="true"></div>
+          <div class="marks" id="marks" aria-hidden="true"></div>
+          <div class="shells" id="shells" aria-hidden="true"></div>
+        </div>
+      </div>
+      <canvas class="fx" id="fx" aria-hidden="true"></canvas>
+    </div>
+
+    <div class="panel" id="placePanel" hidden>
+      <h3>סדר את הצי: בחר אונייה ולחץ על הלוח</h3>
+      <div class="dock" id="dock"></div>
+      <div class="row">
+        <button class="btn btn-ghost" id="rotateBtn">⟳ סיבוב</button>
+        <button class="btn btn-ghost" id="randomBtn">🎲 סידור אקראי</button>
+        <button class="btn btn-ghost" id="clearBtn">ניקוי</button>
+      </div>
+      <button class="btn btn-sonar" id="readyBtn" disabled>הצי מוכן, לקרב!</button>
+    </div>
+
+    <div class="panel firebar" id="fireBar" hidden>
+      <div class="target" id="targetLbl">בחר משבצת בים של היריב</div>
+      <button class="btn btn-primary btn-fire" id="fireBtn" disabled>אש! 💥</button>
+    </div>
+
+    <div class="fleets" id="fleets" hidden>
+      <div class="fleet" id="fleetMine"><h4>הצי שלי</h4></div>
+      <div class="fleet" id="fleetOpp"><h4>הצי של היריב</h4></div>
+    </div>
+    <div class="stats" id="stats" hidden>
+      <span>יריות: <b id="stShots">0</b></span>
+      <span>פגיעות: <b id="stHits">0</b></span>
+      <span>דיוק: <b id="stAcc">0%</b></span>
+    </div>
+
+    <div class="react" id="react" aria-label="תגובות ליריב">
+      <button data-e="💥" aria-label="בום">💥</button>
+      <button data-e="😂" aria-label="צוחק">😂</button>
+      <button data-e="😱" aria-label="בהלם">😱</button>
+      <button data-e="🫡" aria-label="הצדעה">🫡</button>
+      <button data-e="🔥" aria-label="אש">🔥</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" id="flatBtn" aria-pressed="false">תצוגה שטוחה</button>
+      <button class="btn btn-danger" id="resignBtn">כניעה</button>
+      <button class="btn btn-ghost" id="leaveBtn">יציאה</button>
+    </div>
+    <p class="hint" id="roomHint" style="text-align:center"></p>
+  </main>
+
+  <footer>רוצים משהו אחר? <a href="../">משחק דמקה</a></footer>
+</div>
+
+<div id="live" class="sr" aria-live="assertive"></div>
+
+<dialog id="rulesDlg" aria-labelledby="rulesH">
+  <h2 id="rulesH">איך משחקים</h2>
+  <ul>
+    <li>לכל שחקן לוח של 10×10 וצי של 5 אוניות: נושאת מטוסים (5), ספינת קרב (4), משחתת (3), צוללת (3) וסיירת (2).</li>
+    <li>מסדרים את האוניות לאורך או לרוחב, בלי חפיפה. אפשר לסדר לבד או אקראית.</li>
+    <li>יורים בתורות, ירייה אחת בכל תור. היריב עונה אוטומטית: פגיעה 🔥 או החטאה 💧.</li>
+    <li>כשכל המשבצות של אונייה נפגעו, היא טובעת וכולם רואים איזו אונייה זו.</li>
+    <li>מי שמטביע ראשון את כל הצי של היריב מנצח.</li>
+    <li>הוגנות: לפני הקרב כל טלפון נועל את הסידור שלו בחותמת סודית. בסוף המשחק הסידור נחשף, והאתר בודק שאף אחד לא שיקר.</li>
+  </ul>
+  <p class="hint">משחקים: בתור שלך לוחצים על משבצת בים של היריב כדי לכוון, ואז על "אש!". אפשר גם עם מקלדת: חצים ו-Enter.</p>
+  <form method="dialog"><button class="btn btn-primary" style="width:100%">הבנתי</button></form>
+</dialog>
+
+<dialog id="endDlg" aria-labelledby="endH">
+  <h2 id="endH" class="sr">סוף המשחק</h2>
+  <div class="result-big" id="endBig"></div>
+  <p id="endText" style="text-align:center;margin:0 0 6px"></p>
+  <p class="verify" id="verifyTxt"></p>
+  <div class="row">
+    <button class="btn btn-primary" id="rematchBtn">משחק חוזר</button>
+    <button class="btn btn-ghost" id="endClose">לראות את הלוח</button>
+  </div>
+</dialog>
+
+<dialog id="confirmDlg" aria-labelledby="confirmH">
+  <h2 id="confirmH">בטוח?</h2>
+  <p id="confirmText"></p>
+  <div class="row">
+    <button class="btn btn-danger" id="confirmYes">כן</button>
+    <button class="btn btn-ghost" id="confirmNo">לא</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="game.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
