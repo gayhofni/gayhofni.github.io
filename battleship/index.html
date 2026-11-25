@@ -99,9 +99,13 @@
       <button class="btn btn-sonar" id="readyBtn" disabled>הצי מוכן, לקרב!</button>
     </div>
 
-    <div class="panel firebar" id="fireBar" hidden>
-      <div class="target" id="targetLbl">בחר משבצת בים של היריב</div>
-      <button class="btn btn-primary btn-fire" id="fireBtn" disabled>אש! 💥</button>
+    <div class="panel" id="fireBar" hidden>
+      <div class="weapons" id="weapons" role="radiogroup" aria-label="בחירת נשק"></div>
+      <div class="firebar">
+        <div class="target" id="targetLbl">בחר משבצת בים של היריב</div>
+        <button class="btn btn-ghost" id="dirBtn" hidden>↔ לרוחב</button>
+        <button class="btn btn-primary btn-fire" id="fireBtn" disabled>אש! 💥</button>
+      </div>
     </div>
 
     <div class="fleets" id="fleets" hidden>
@@ -140,7 +144,14 @@
   <ul>
     <li>לכל שחקן לוח של 10×10 וצי של 5 אוניות: נושאת מטוסים (5), ספינת קרב (4), משחתת (3), צוללת (3) וסיירת (2).</li>
     <li>מסדרים את האוניות לאורך או לרוחב, בלי חפיפה. אפשר לסדר לבד או אקראית.</li>
-    <li>יורים בתורות, ירייה אחת בכל תור. היריב עונה אוטומטית: פגיעה 🔥 או החטאה 💧.</li>
+    <li>יורים בתורות. היריב עונה אוטומטית: פגיעה 🔥 או החטאה 💧. <b>פגיעה בירייה רגילה = עוד ירייה.</b></li>
+    <li><b>נשק מיוחד</b> (במקום ירייה רגילה):
+      ✈️ מתקפה אווירית: 5 משבצות בצורת + (פעמיים) ·
+      🚀 טיל טומהוק: ריבוע 3×3 (פעם אחת) ·
+      💥 טילי אפאצ'י: 3 משבצות בקו (פעמיים) ·
+      🌊 טורפדו: שוחה לאורך שורה או טור עד האונייה הראשונה (פעמיים) ·
+      📡 סונאר: בודק אם יש אונייה בריבוע 3×3 בלי לירות (פעמיים).</li>
+    <li>כל נשק שייך לאונייה: נושאת המטוסים, ספינת הקרב, המשחתת, הצוללת והסיירת. כשהאונייה טובעת, הנשק שלה אובד.</li>
     <li>כשכל המשבצות של אונייה נפגעו, היא טובעת וכולם רואים איזו אונייה זו.</li>
     <li>מי שמטביע ראשון את כל הצי של היריב מנצח.</li>
     <li>הוגנות: לפני הקרב כל טלפון נועל את הסידור שלו בחותמת סודית. בסוף המשחק הסידור נחשף, והאתר בודק שאף אחד לא שיקר.</li>
