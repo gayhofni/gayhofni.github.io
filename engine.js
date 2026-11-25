@@ -1,5 +1,6 @@
 /* Draughts rules engine: Russian draughts (shashki) with two house rules:
-   men capture forward only, and a king that captures lands right behind the captured piece.
+   a man's first capture is forward only (backward allowed later in the chain), and a king
+   that captures lands right behind the piece and may chain only onto an adjacent piece.
    Pure functions, no DOM.
    Board: array of 64. Index = r*8 + c, r=0 is the top row (black's back row).
    Values: 0 empty, 1 white man, 2 white king, -1 black man, -2 black king.
@@ -40,9 +41,13 @@
       var p = rc(pos);
       for (var d = 0; d < 4; d++) {
         var dr = DIRS[d][0], dc = DIRS[d][1];
-        if (!king && dr !== -side) continue; // house rule: men capture forward only
+        var chain = caps.length > 0;
+        // house rule: a man's first capture must be forward; later captures in the chain may go backward
+        if (!king && !chain && dr !== -side) continue;
         var r = p[0] + dr, c = p[1] + dc;
-        if (king) {
+        // house rule: a king captures from a distance only on its first capture;
+        // continuing the chain needs an enemy piece directly next to it (like a man)
+        if (king && !chain) {
           while (onBoard(r, c) && b[idx(r, c)] === 0) { r += dr; c += dc; }
         }
         if (!onBoard(r, c)) continue;
