@@ -61,7 +61,7 @@ function say(msg) { var l = $('live'); l.textContent = ''; setTimeout(function (
 /* ---------- state ---------- */
 var room = null, seen = {}, es = null, lastMsgId = null, pingTimer = null, reconnectTimer = null;
 var myLayout = [], salt = null;
-var view = 'mine', selShip = null, selDir = 'h', aim = null;
+var view = 'mine', selShip = null, selDir = 'h', aim = null, weapon = 'shot', wdir = 'h';
 var held = {}, shotTime = {}, answered = {}, revealSent = {}, endShownFor = null, autoTimer = null, wasMyTurn = false;
 var verifyCache = {};
 
@@ -72,7 +72,23 @@ function seatKey(id) { return !room ? null : room.seats.a === id ? 'a' : room.se
 function other(k) { return k === 'a' ? 'b' : 'a'; }
 function me() { return seatKey(myId); }
 function opp() { var m = me(); return m ? other(m) : null; }
-function shooterSeat(n) { return ((n + room.g) % 2 === 0) ? 'a' : 'b'; }
+function shooterSeat(n) {
+  var cur = room.g % 2 === 0 ? 'a' : 'b';
+  for (var k = 0; k < n && k < room.shots.length; k++) { var s = room.shots[k]; if (!s.res || !B.extraTurn(s)) cur = other(cur); }
+  return cur;
+}
+function sunkShipsOf(seat) {
+  var out = {};
+  room.shots.forEach(function (s) { if (s.by === other(seat) && s.res) s.res.cells.forEach(function (c) { if (c.sunk) out[c.sunk] = 1; }); });
+  return out;
+}
+function usesLeft(seat, w) {
+  var W = B.WEAPONS[w]; if (!W) return 0;
+  if (W.ship && sunkShipsOf(seat)[W.ship]) return 0;
+  if (W.uses === Infinity) return Infinity;
+  return Math.max(0, W.uses - room.shots.filter(function (s) { return s.by === seat && s.w === w; }).length);
+}
+function firedCells(shots) { var out = []; shots.forEach(function (s) { if (s.res) s.res.cells.forEach(function (c) { out.push(c.i); }); }); return out; }
 function bothReady() { return !!(room.ready.a && room.ready.b); }
 function lastResolved() { var s = room.shots; return !s.length || (!!s[s.length - 1].res && !held[s[s.length - 1].n]); }
 function lastAnswered() { var s = room.shots; return !s.length || !!s[s.length - 1].res; }
@@ -149,7 +165,9 @@ function onMsg(m, live) {
       if (m.g !== room.g || room.over || !bothReady() || m.n !== room.shots.length || !lastAnswered()) break;
       if (!k || k !== shooterSeat(m.n)) break;
       var idx = Number(m.i); if (!(idx >= 0 && idx < 100 && idx % 1 === 0)) break;
-      var s = { n: m.n, by: k, idx: idx, res: null };
+      var w = B.WEAPONS[m.w] ? m.w : 'shot';
+      if (usesLeft(k, w) < 1) break;
+      var s = { n: m.n, by: k, idx: idx, w: w, d: m.d === 'v' ? 'v' : 'h', res: null };
       room.shots.push(s); shotTime[m.n] = Date.now();
       if (live) shellFx(s);
       maybeAnswer(live);
@@ -157,9 +175,13 @@ function onMsg(m, live) {
     case 'result':
       var sh = room.shots[m.n];
       if (!sh || m.g !== room.g || sh.res || !k || k === sh.by) break;
-      var sunk = typeof m.sunk === 'string' && B.spec(m.sunk) ? m.sunk : null;
-      var cells = sunk && Array.isArray(m.cells) && m.cells.length === B.spec(sunk).len ? m.cells.map(Number).filter(function (c) { return c >= 0 && c < 100; }) : null;
-      sh.res = { hit: !!m.hit, sunk: sunk, cells: cells && cells.length === B.spec(sunk).len ? cells : null, over: !!m.over };
+      var rc = (Array.isArray(m.r) ? m.r : []).slice(0, 10).map(function (c) {
+        c = c || {};
+        var sunk = typeof c.sunk === 'string' && B.spec(c.sunk) ? c.sunk : null;
+        var cs = sunk && Array.isArray(c.cells) ? c.cells.map(Number).filter(function (x) { return x >= 0 && x < 100; }) : null;
+        return { i: Number(c.i), hit: !!c.hit, sunk: sunk, cells: cs && cs.length === B.spec(sunk).len ? cs : null };
+      }).filter(function (c) { return c.i >= 0 && c.i < 100 && c.i % 1 === 0; });
+      sh.res = { cells: rc, over: !!m.over, found: sh.w === 'sonar' ? !!m.found : null };
       if (sh.res.over) room.over = { winner: sh.by, reason: 'fleet' };
       if (live) resultFx(sh);
       break;
@@ -172,7 +194,7 @@ function onMsg(m, live) {
     case 'new':
       if (m.g === room.g + 1 && room.over && k) {
         room.g = m.g; room.ready = { a: null, b: null }; room.shots = []; room.over = null; room.reveals = {};
-        held = {}; aim = null; loadLocal(); clearBoardEls();
+        held = {}; aim = null; weapon = 'shot'; loadLocal(); clearBoardEls();
         if (live) { closeDlg($('endDlg')); toast('משחק חדש! סדרו את הצי מחדש'); setView('mine'); }
       }
       break;
@@ -190,11 +212,11 @@ function maybeAnswer() {
   if (!s || s.res || s.by !== opp() || answered[room.g + ':' + s.n]) return;
   if (!B.validLayout(myLayout) || !room.ready[me()]) return;
   answered[room.g + ':' + s.n] = 1;
-  var prior = oppShots().filter(function (x) { return x.n < s.n; }).map(function (x) { return x.idx; });
-  var r = B.resolve(myLayout, prior, s.idx);
-  var msg = { t: 'result', g: room.g, n: s.n, hit: r.hit, sunk: r.sunk, cells: r.cells, over: r.over };
+  var prior = firedCells(oppShots().filter(function (x) { return x.n < s.n; }));
+  var r = B.volley(myLayout, prior, s.w, s.idx, s.d);
+  var msg = { t: 'result', g: room.g, n: s.n, r: r.cells, over: r.over, found: r.found };
   publish(msg).catch(function () { answered[room.g + ':' + s.n] = 0; });
-  onMsg({ t: 'result', g: msg.g, n: msg.n, hit: r.hit, sunk: r.sunk, cells: r.cells, over: r.over, id: myId }, room.loaded);
+  onMsg({ t: 'result', g: msg.g, n: msg.n, r: r.cells, over: r.over, found: r.found, id: myId }, room.loaded);
 }
 function maybeReveal() {
   if (!room.over || !me() || revealSent[room.code + room.g] || !B.validLayout(myLayout) || !salt) return;
@@ -220,8 +242,8 @@ function verifyOpp() {
   var key = room.g + ':' + JSON.stringify(rv);
   if (verifyCache[key] !== undefined) return Promise.resolve(verifyCache[key]);
   return sha(B.canonical(rv.layout) + '|' + rv.salt).then(function (h) {
-    var shots = myShots().filter(function (s) { return s.res; }).map(function (s) { return { idx: s.idx, res: s.res }; });
-    var ok = h === room.ready[o] && B.audit(rv.layout, shots);
+    var shots = myShots().filter(function (s) { return s.res; }).map(function (s) { return { w: s.w, i: s.idx, d: s.d, res: s.res }; });
+    var ok = h === room.ready[o] && B.auditVolleys(rv.layout, shots);
     verifyCache[key] = ok; return ok;
   });
 }
@@ -349,11 +371,11 @@ function shipFromCells(id, cells) {
 }
 // The ships and marks shown on the current board
 function boardModel() {
-  var ships = [], marks = [], pending = null;
+  var ships = [], marks = {}, pending = [], scans = [];
   var mine = view === 'mine';
   var shots = mine ? oppShots() : myShots();
   var hitSet = {};
-  shots.forEach(function (s) { if (s.res && s.res.hit && !held[s.n]) hitSet[s.idx] = 1; });
+  shots.forEach(function (s) { if (s.res && !held[s.n]) s.res.cells.forEach(function (c) { if (c.hit) hitSet[c.i] = 1; }); });
   if (mine) {
     myLayout.forEach(function (s) {
       var cells = B.cellsOf(s), nHit = cells.filter(function (c) { return hitSet[c]; }).length;
@@ -362,18 +384,25 @@ function boardModel() {
     });
   } else {
     var sunkIds = {};
-    shots.forEach(function (s) { if (s.res && s.res.sunk && s.res.cells && !held[s.n]) { sunkIds[s.res.sunk] = 1; ships.push({ key: 'e' + s.res.sunk, s: shipFromCells(s.res.sunk, s.res.cells), cls: 'enemy', sunk: true }); } });
+    shots.forEach(function (s) {
+      if (!s.res || held[s.n]) return;
+      s.res.cells.forEach(function (c) { if (c.sunk && c.cells && !sunkIds[c.sunk]) { sunkIds[c.sunk] = 1; ships.push({ key: 'e' + c.sunk, s: shipFromCells(c.sunk, c.cells), cls: 'enemy', sunk: true }); } });
+    });
     var rv = room.over && opp() && room.reveals[opp()];
     if (rv && B.validLayout(rv.layout)) rv.layout.forEach(function (s) { if (!sunkIds[s.id]) ships.push({ key: 'r' + s.id, s: s, cls: 'reveal', sunk: false }); });
   }
   var sunkCells = {};
   ships.forEach(function (o) { if (o.sunk) B.cellsOf(o.s).forEach(function (c) { sunkCells[c] = 1; }); });
   shots.forEach(function (s) {
-    if (!s.res) { pending = s.idx; return; }
+    if (!s.res) { pending = B.pattern(s.w, s.idx, s.d); if (s.w === 'torpedo') pending = [s.idx]; return; }
     if (held[s.n]) return;
-    marks.push({ key: (mine ? 'm' : 'e') + s.idx, idx: s.idx, hit: s.res.hit, low: !mine || !!sunkCells[s.idx] });
+    if (s.w === 'sonar') { scans.push({ cells: B.pattern('sonar', s.idx), found: s.res.found }); return; }
+    s.res.cells.forEach(function (c) {
+      var prev = marks[c.i];
+      marks[c.i] = { key: (mine ? 'm' : 'e') + c.i, idx: c.i, hit: c.hit || (prev && prev.hit), low: !mine || !!sunkCells[c.i] };
+    });
   });
-  return { ships: ships, marks: marks, pending: pending };
+  return { ships: ships, marks: Object.keys(marks).map(function (k) { return marks[k]; }), pending: pending, scans: scans };
 }
 function renderBoard() {
   var mdl = boardModel();
@@ -408,14 +437,24 @@ function renderBoard() {
   for (var j in markEls) if (!wantM[j]) { markEls[j].remove(); delete markEls[j]; }
   // cells: aim, pending, labels
   var shots = view === 'mine' ? oppShots() : myShots(), byIdx = {};
-  shots.forEach(function (s) { byIdx[s.idx] = s; });
+  shots.forEach(function (s) {
+    if (!s.res) { byIdx[s.idx] = s; return; }
+    s.res.cells.forEach(function (c) { var o = byIdx[c.i]; byIdx[c.i] = { res: { hit: c.hit || (o && o.res && o.res.hit), sunk: c.sunk || (o && o.res && o.res.sunk) } }; });
+  });
   var occupied = {};
   if (view === 'mine') myLayout.forEach(function (s) { B.cellsOf(s).forEach(function (c) { occupied[c] = B.spec(s.id).name; }); });
+  var aimSet = {};
+  if (aim !== null && view === 'enemy') B.pattern(weapon, aim, wdir).forEach(function (c) { aimSet[c] = 1; });
+  var scanState = {};
+  mdl.scans.forEach(function (sc) { sc.cells.forEach(function (c) { if (scanState[c] !== 1) scanState[c] = sc.found ? 1 : 2; }); });
   var cells = $('grid').children;
   for (var i = 0; i < cells.length; i++) {
     var c = cells[i], s = byIdx[i];
     c.classList.toggle('aim', aim === i);
-    c.classList.toggle('pending', mdl.pending === i);
+    c.classList.toggle('aimarea', !!aimSet[i] && aim !== i);
+    c.classList.toggle('pending', mdl.pending.indexOf(i) !== -1);
+    c.classList.toggle('scan-yes', scanState[i] === 1);
+    c.classList.toggle('scan-no', scanState[i] === 2);
     var st = !s ? 'לא נורה' : !s.res ? 'ממתין לתשובה' : s.res.sunk ? 'פגיעה, אונייה טבעה' : s.res.hit ? 'פגיעה' : 'החטאה';
     var lbl = B.name(i) + ', ' + st + (occupied[i] ? ', ' + occupied[i] : '');
     if (c.getAttribute('aria-label') !== lbl) c.setAttribute('aria-label', lbl);
@@ -512,54 +551,121 @@ function cellTap(i) {
     return;
   }
   if (!isMyTurn()) { toast(lastResolved() ? 'זה התור של היריב' : 'מחכים לתשובה על הירייה הקודמת'); return; }
-  if (myShots().some(function (s) { return s.idx === i; })) { sfx('bad'); toast('כבר ירית למשבצת הזאת'); return; }
+  if (weapon === 'shot' && firedCells(myShots()).indexOf(i) !== -1) { sfx('bad'); toast('כבר ירית למשבצת הזאת'); return; }
   if (aim === i) { fire(); return; }
-  aim = i; sfx('place'); say('מכוון אל ' + B.name(i) + '. לחץ אש.'); render();
+  aim = i; sfx('place'); say('מכוון ' + B.WEAPONS[weapon].name + ' אל ' + B.name(i) + '. לחץ אש.'); render();
 }
 function fire() {
   if (aim === null || !isMyTurn()) return;
-  var msg = { t: 'shot', g: room.g, n: room.shots.length, i: aim };
-  aim = null;
-  onMsg({ t: 'shot', g: msg.g, n: msg.n, i: msg.i, id: myId }, true);
+  if (usesLeft(me(), weapon) < 1) { weapon = 'shot'; render(); return; }
+  var msg = { t: 'shot', g: room.g, n: room.shots.length, i: aim, w: weapon, d: wdir };
+  aim = null; weapon = 'shot';
+  onMsg({ t: 'shot', g: msg.g, n: msg.n, i: msg.i, w: msg.w, d: msg.d, id: myId }, true);
   publish(msg).catch(function () { toast('הירייה לא נשלחה. בודק חיבור…'); });
 }
 $('fireBtn').onclick = fire;
+$('dirBtn').onclick = function () { wdir = wdir === 'h' ? 'v' : 'h'; sfx('place'); render(); };
+function renderWeapons() {
+  var box = $('weapons'), m = me();
+  if (!box.children.length) {
+    B.WEAPON_ORDER.forEach(function (w) {
+      var W = B.WEAPONS[w], b = document.createElement('button');
+      b.type = 'button'; b.dataset.w = w; b.setAttribute('role', 'radio');
+      b.innerHTML = '<span class="ic" aria-hidden="true">' + W.icon + '</span><span class="wn">' + esc(W.name) + '</span><span class="uses"></span>';
+      b.onclick = function () {
+        if (usesLeft(me(), w) < 1) { toast(B.WEAPONS[w].ship && sunkShipsOf(me())[B.WEAPONS[w].ship] ? 'ה' + B.spec(B.WEAPONS[w].ship).name + ' טבעה, הנשק אבד' : 'נגמרה התחמושת'); return; }
+        weapon = w; sfx('place'); toast(W.icon + ' ' + W.name + ': ' + W.desc); render();
+      };
+      box.appendChild(b);
+    });
+  }
+  Array.prototype.forEach.call(box.children, function (b) {
+    var w = b.dataset.w, W = B.WEAPONS[w], left = m ? usesLeft(m, w) : 0;
+    var lost = W.ship && m && sunkShipsOf(m)[W.ship];
+    b.querySelector('.uses').textContent = lost ? 'טבעה' : left === Infinity ? '∞' : '×' + left;
+    b.disabled = !left;
+    b.setAttribute('aria-checked', String(weapon === w));
+    b.setAttribute('aria-label', W.name + ', ' + W.desc + ', ' + (lost ? 'הספינה טבעה' : left === Infinity ? 'ללא הגבלה' : 'נשארו ' + left));
+  });
+  var dirOn = !!B.WEAPONS[weapon].dir;
+  $('dirBtn').hidden = !dirOn;
+  $('dirBtn').textContent = wdir === 'h' ? '↔ לרוחב' : '↕ לאורך';
+}
 
 /* ---------- effects ---------- */
 function shellFx(s) {
   var board = s.by === me() ? 'enemy' : 'mine';
   clearTimeout(autoTimer);
   if (view !== board) setView(board);
+  if (s.w === 'sonar') { sfx('ping'); return; }
+  if (s.w === 'torpedo') { sfx('whistle'); return; }
   sfx('whistle');
   if (reduced) return;
-  var el = document.createElement('div'); el.className = 'shell';
-  el.style.left = (s.idx % 10) * 10 + '%'; el.style.top = Math.floor(s.idx / 10) * 10 + '%';
-  el.innerHTML = '<div class="bill"><div class="bomb"></div></div>';
-  $('shells').appendChild(el); setTimeout(function () { el.remove(); }, 700);
+  B.pattern(s.w, s.idx, s.d).forEach(function (c, k) {
+    var el = document.createElement('div'); el.className = 'shell';
+    el.style.left = (c % 10) * 10 + '%'; el.style.top = Math.floor(c / 10) * 10 + '%';
+    el.innerHTML = '<div class="bill"><div class="bomb"></div></div>';
+    el.firstChild.style.animationDelay = (k * 45) + 'ms';
+    $('shells').appendChild(el); setTimeout(function () { el.remove(); }, 760 + k * 45);
+  });
 }
+function torpedoRun(s, done) {
+  var cells = s.res.cells, last = cells.length ? cells[cells.length - 1].i : s.idx;
+  if (reduced || !cells.length) { done(); return; }
+  var first = cells[0].i, dur = 90 * cells.length;
+  var el = document.createElement('div'); el.className = 'torp' + (s.d === 'v' ? ' v' : '');
+  el.style.left = (first % 10) * 10 + '%'; el.style.top = Math.floor(first / 10) * 10 + '%';
+  el.style.setProperty('--tx', ((last % 10) - (first % 10)) * 100 + '%');
+  el.style.setProperty('--ty', (Math.floor(last / 10) - Math.floor(first / 10)) * 100 + '%');
+  el.style.animationDuration = dur + 'ms';
+  el.innerHTML = '<i></i>';
+  $('shells').appendChild(el);
+  noiseRun(dur);
+  setTimeout(function () { el.remove(); done(); }, dur);
+}
+function noiseRun(ms) { if (!soundOn) return; try { noise(ms / 1000, 'bandpass', 500, .25, 1400); } catch (e) {} }
 function resultFx(s) {
   held[s.n] = 1;
-  var delay = Math.max(0, (shotTime[s.n] || 0) + (reduced ? 0 : 640) - Date.now());
+  var delay = s.w === 'torpedo' || s.w === 'sonar' ? 0 : Math.max(0, (shotTime[s.n] || 0) + (reduced ? 0 : 640) - Date.now());
   setTimeout(function () {
-    delete held[s.n];
     var board = s.by === me() ? 'enemy' : 'mine';
     if (view !== board) setView(board, true);
+    if (s.w === 'torpedo') torpedoRun(s, land); else land();
+  }, delay);
+  function land() {
+    delete held[s.n];
     render();
     var mineShot = s.by === me();
-    if (s.res.hit) {
-      explode(s.idx, !!s.res.sunk);
-      sfx(s.res.sunk ? 'bigboom' : 'boom'); buzz(s.res.sunk ? [60, 40, 120] : 50); shake(!!s.res.sunk);
-      if (s.res.sunk) bigText(mineShot ? 'הטבעת ' + B.spec(s.res.sunk).name + '!' : B.spec(s.res.sunk).name + ' שלך טבעה!');
-      else bigText(mineShot ? 'פגיעה!' : 'נפגעת!');
+    if (s.w === 'sonar') {
+      sonarPing(s.idx, s.res.found); sfx('ping');
+      bigText(s.res.found ? (mineShot ? 'הסונאר זיהה אונייה!' : 'הסונאר שלו מצא אותך!') : (mineShot ? 'הסונאר: האזור ריק' : 'הסונאר שלו לא מצא כלום'), !s.res.found);
+      say('סונאר ב-' + B.name(s.idx) + ': ' + (s.res.found ? 'יש אונייה באזור' : 'האזור ריק'));
     } else {
-      splash(s.idx); sfx('splash'); bigText(mineShot ? 'החטאה' : 'פספס!', true);
+      var hits = s.res.cells.filter(function (c) { return c.hit; }), sunk = s.res.cells.filter(function (c) { return c.sunk; });
+      s.res.cells.forEach(function (c, k) {
+        setTimeout(function () { if (c.hit) explode(c.i, !!c.sunk); else splash(c.i); }, k * (s.w === 'torpedo' ? 0 : 110));
+      });
+      if (hits.length) { sfx(sunk.length || hits.length > 2 ? 'bigboom' : 'boom'); buzz(sunk.length ? [60, 40, 120] : 50); shake(sunk.length > 0 || hits.length > 2); }
+      else sfx('splash');
+      var t;
+      if (sunk.length) t = mineShot ? 'הטבעת ' + B.spec(sunk[0].sunk).name + '!' : B.spec(sunk[0].sunk).name + ' שלך טבעה!';
+      else if (hits.length > 1) t = (mineShot ? 'פגיעה ×' : 'נפגעת ×') + hits.length + '!';
+      else if (hits.length) t = mineShot ? 'פגיעה!' : 'נפגעת!';
+      else t = mineShot ? 'החטאה' : 'פספס!';
+      bigText(t, !hits.length);
+      if (B.extraTurn(s) && !room.over) setTimeout(function () { bigText(mineShot ? 'עוד ירייה! 🎯' : 'היריב יורה שוב'); }, 1100);
+      say((mineShot ? 'התקיפה שלך: ' : 'היריב תקף: ') + B.WEAPONS[s.w].name + ', ' + (hits.length ? hits.length + ' פגיעות' : 'החטאה') + (sunk.length ? ', ' + B.spec(sunk[0].sunk).name + ' טבעה' : '') + (B.extraTurn(s) ? '. עוד ירייה' : ''));
     }
-    say((mineShot ? 'הירייה שלך אל ' : 'היריב ירה אל ') + B.name(s.idx) + ': ' + (s.res.sunk ? 'פגיעה, ' + B.spec(s.res.sunk).name + ' טבעה' : s.res.hit ? 'פגיעה' : 'החטאה'));
     if (!room.over) {
       clearTimeout(autoTimer);
-      autoTimer = setTimeout(function () { if (room && inBattle()) setView(isMyTurn() ? 'enemy' : 'mine'); }, 1500);
+      autoTimer = setTimeout(function () { if (room && inBattle()) setView(isMyTurn() ? 'enemy' : 'mine'); }, 1700);
     } else setTimeout(render, 1400);
-  }, delay);
+  }
+}
+function sonarPing(i, found) {
+  if (reduced) return;
+  var c = cellPt(i), sq = c.h / c.w, col = found ? '#5cf2c3' : '#9fb7c4';
+  for (var k = 0; k < 3; k++) add({ k: 'ring', x: c.x, y: c.y, r: c.w * .2, vr: c.w * .09, sq: sq, life: 1, c: col, w: 3, delay: k * 12 });
 }
 function bigText(t, miss) {
   if (reduced) return;
@@ -701,15 +807,17 @@ function render() {
   else if (pl) setStatus(B.validLayout(myLayout) ? 'הצי מסודר. לחץ "הצי מוכן"' : 'סדר את הצי שלך', room.ready[o] ? 'היריב מוכן' : null);
   else if (!bothReady()) setStatus('מחכים שהיריב יסדר את הצי…');
   else if (!room.ready[m] || !B.validLayout(myLayout)) setStatus('הסידור שלך שמור במכשיר אחר. פתח את המשחק מאותו טלפון.');
-  else if (myTurn) setStatus('התור שלך!', aim === null ? 'בחר מטרה' : 'לחץ אש');
+  else if (myTurn) setStatus('התור שלך!', B.WEAPONS[weapon].icon + ' ' + (aim === null ? 'בחר מטרה' : 'לחץ אש'));
   else if (!lastResolved()) setStatus(room.shots[room.shots.length - 1].by === m ? 'הפגז בדרך… מחכים לתשובה' : 'היריב ירה!');
   else setStatus('היריב מכוון…');
   if (myTurn && !wasMyTurn) { var st = $('status'); st.classList.remove('flash'); void st.offsetWidth; st.classList.add('flash'); }
   wasMyTurn = myTurn;
 
   // fire bar
+  if (m && inBattle() && usesLeft(m, weapon) < 1) weapon = 'shot';
+  if (m && inBattle()) renderWeapons();
   $('fireBtn').disabled = !(myTurn && aim !== null && view === 'enemy');
-  $('targetLbl').innerHTML = myTurn ? (aim !== null ? 'מטרה: <b>' + B.name(aim) + '</b>' : (view === 'enemy' ? 'בחר משבצת בים של היריב' : 'עבור ל"הים של היריב" כדי לירות')) : 'חכה לתור שלך';
+  $('targetLbl').innerHTML = myTurn ? (aim !== null ? B.WEAPONS[weapon].icon + ' מטרה: <b>' + B.name(aim) + '</b>' : (view === 'enemy' ? 'בחר משבצת בים של היריב' : 'עבור ל"הים של היריב" כדי לירות')) : 'חכה לתור שלך';
 
   renderBoard();
   renderFleets();
@@ -742,9 +850,9 @@ function updateVerify() {
 function renderFleets() {
   if ($('fleets').hidden) return;
   var hitSet = {};
-  oppShots().forEach(function (s) { if (s.res && s.res.hit && !held[s.n]) hitSet[s.idx] = 1; });
+  oppShots().forEach(function (s) { if (s.res && !held[s.n]) s.res.cells.forEach(function (c) { if (c.hit) hitSet[c.i] = 1; }); });
   var sunkOpp = {};
-  myShots().forEach(function (s) { if (s.res && s.res.sunk && !held[s.n]) sunkOpp[s.res.sunk] = 1; });
+  myShots().forEach(function (s) { if (s.res && !held[s.n]) s.res.cells.forEach(function (c) { if (c.sunk) sunkOpp[c.sunk] = 1; }); });
   var h1 = '<h4>הצי שלי</h4>', h2 = '<h4>הצי של היריב</h4>';
   B.FLEET.forEach(function (f) {
     var s = shipById(f.id), cells = s ? B.cellsOf(s) : [], n = cells.filter(function (c) { return hitSet[c]; }).length;
@@ -755,9 +863,10 @@ function renderFleets() {
   });
   if ($('fleetMine').innerHTML !== h1) $('fleetMine').innerHTML = h1;
   if ($('fleetOpp').innerHTML !== h2) $('fleetOpp').innerHTML = h2;
-  var mine = myShots().filter(function (s) { return s.res && !held[s.n]; }), hits = mine.filter(function (s) { return s.res.hit; }).length;
+  var mine = myShots().filter(function (s) { return s.res && !held[s.n] && s.w !== 'sonar'; }), fired = 0, hits = 0;
+  mine.forEach(function (s) { s.res.cells.forEach(function (c) { fired++; if (c.hit) hits++; }); });
   $('stShots').textContent = mine.length; $('stHits').textContent = hits;
-  $('stAcc').textContent = mine.length ? Math.round(hits * 100 / mine.length) + '%' : '0%';
+  $('stAcc').textContent = fired ? Math.round(hits * 100 / fired) + '%' : '0%';
 }
 
 /* ---------- boot ---------- */
